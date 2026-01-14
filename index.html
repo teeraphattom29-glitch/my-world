@@ -1,92 +1,14 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>My World</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <style>
-        body { margin: 0; background: #222; overflow: hidden; font-family: sans-serif; }
-        
-        canvas { display: block; background: #fff; }
-
-        #controls {
-            position: fixed; bottom: 20px; right: 20px;
-            display: flex; flex-direction: column; align-items: center; gap: 10px;
-            z-index: 99;
-            /* ป้องกันการเลือกข้อความทั้งแผง */
-            user-select: none;
-            -webkit-user-select: none;
-        }
-        .row { display: flex; gap: 10px; }
-        
-        button {
-            width: 70px; height: 70px; font-size: 30px; /* ปรับปุ่มใหญ่ขึ้นนิดนึง */
-            background: rgba(255,255,255,0.3); 
-            border: 2px solid white; 
-            border-radius: 50%;
-            color: white; 
-            cursor: pointer;
-            
-            /* 🛑 หัวใจสำคัญ: ปิดระบบของ Browser ทั้งหมด */
-            user-select: none;         /* ห้ามคลุมดำ */
-            -webkit-user-select: none; /* ห้ามคลุมดำ (Safari/Chrome) */
-            touch-action: none;        /* ห้าม Browser เอานิ้วไปซูมหรือเลื่อนจอ */
-            -webkit-touch-callout: none; /* ห้ามกดค้างแล้วขึ้นเมนูคลิกขวา (iOS) */
-        }
-
-        /* เวลากดปุ่ม ให้ปุ่มยุบลงและเปลี่ยนสี */
-        button:active, button.active { 
-            background: rgba(255,255,255,0.8); 
-            color: black; 
-            transform: scale(0.9);
-        }
-    </style>
-</head>
-<body>
-
-    <canvas id="gameCanvas"></canvas>
-
-    <div id="controls" oncontextmenu="return false;">
-        <button id="up" data-dir="up">⬆️</button>
-        <div class="row">
-            <button id="left" data-dir="left">⬅️</button>
-            <button id="down" data-dir="down">⬇️</button>
-            <button id="right" data-dir="right">➡️</button>
-        </div>
-    </div>
-
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
+<script>
         const socket = io();
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // ปรับขนาดจอให้เต็ม
-        const resize = () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            draw();
-        };
-        window.addEventListener('resize', resize);
-        resize(); // เรียกครั้งแรกทันที
-
+        // ✅ แก้ไข: ประกาศตัวแปร players ไว้บนสุด ก่อนที่จะถูกเรียกใช้
         let players = {};
         let myId = null;
-        
-        // ตัวแปรเช็กว่ากำลังกดทิศไหนค้างไว้
         let movement = { up: false, down: false, left: false, right: false };
 
-        socket.on('connect', () => myId = socket.id);
-        socket.on('currentPlayers', (data) => { players = data; draw(); });
-        socket.on('newPlayer', (data) => { players[data.id] = data.player; draw(); });
-        socket.on('playerMoved', (data) => {
-            if(players[data.id]) {
-                players[data.id].x = data.x;
-                players[data.id].y = data.y;
-                draw();
-            }
-        });
-        socket.on('disconnectPlayer', (id) => { delete players[id]; draw(); });
-
+        // ฟังก์ชันวาดรูป
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             for (let id in players) {
@@ -94,78 +16,67 @@
                 ctx.fillStyle = p.color;
                 ctx.fillRect(p.x, p.y, 30, 30);
                 
-                ctx.fillStyle = "black";
-                ctx.font = "12px Arial";
+                ctx.fillStyle = "black"; 
+                ctx.font = "12px Arial"; 
                 ctx.textAlign = "center";
                 ctx.fillText(id === myId ? "ME" : "Guest", p.x + 15, p.y - 5);
             }
         }
 
-        // --- 🎮 Game Loop (หัวใจของการกดค้าง) ---
-        // ทำงานวนซ้ำ 60 ครั้งต่อวินาที เพื่อเช็กว่าปุ่มไหนถูกกดอยู่
+        // ฟังก์ชันปรับขนาดจอ
+        const resize = () => { 
+            canvas.width = window.innerWidth; 
+            canvas.height = window.innerHeight; 
+            draw(); 
+        };
+        window.addEventListener('resize', resize);
+        resize(); // เรียกใช้ตอนนี้ปลอดภัยแล้ว เพราะ players ถูกสร้างบรรทัดบนสุดแล้ว
+
+        // --- ส่วนรับข้อมูลจาก Server ---
+        socket.on('connect', () => myId = socket.id);
+        socket.on('currentPlayers', (data) => { players = data; draw(); });
+        socket.on('newPlayer', (data) => { players[data.id] = data.player; draw(); });
+        socket.on('playerMoved', (data) => {
+            if(players[data.id]) { players[data.id].x = data.x; players[data.id].y = data.y; draw(); }
+        });
+        socket.on('disconnectPlayer', (id) => { delete players[id]; draw(); });
+
+        // --- Game Loop (เดิน) ---
         setInterval(() => {
             if (!myId || !players[myId]) return;
-
-            let moveSpeed = 5;
             let moved = false;
-            let x = players[myId].x;
-            let y = players[myId].y;
-
-            if (movement.up) { y -= moveSpeed; moved = true; }
-            if (movement.down) { y += moveSpeed; moved = true; }
-            if (movement.left) { x -= moveSpeed; moved = true; }
-            if (movement.right) { x += moveSpeed; moved = true; }
-
-            if (moved) {
-                players[myId].x = x;
-                players[myId].y = y;
-                socket.emit('playerMovement', { x, y });
-                draw();
+            if (movement.up) { players[myId].y -= 5; moved = true; }
+            if (movement.down) { players[myId].y += 5; moved = true; }
+            if (movement.left) { players[myId].x -= 5; moved = true; }
+            if (movement.right) { players[myId].x += 5; moved = true; }
+            
+            if (moved) { 
+                socket.emit('playerMovement', { x: players[myId].x, y: players[myId].y }); 
+                draw(); 
             }
         }, 1000 / 60);
 
-        // --- ⌨️ ควบคุมด้วยคีย์บอร์ด ---
+        // --- Controls ---
         document.addEventListener('keydown', (e) => {
-            if (e.repeat) return; // ป้องกัน Event รัวเกินไป
-            if (e.key === 'ArrowUp' || e.key === 'w') movement.up = true;
-            if (e.key === 'ArrowDown' || e.key === 's') movement.down = true;
-            if (e.key === 'ArrowLeft' || e.key === 'a') movement.left = true;
-            if (e.key === 'ArrowRight' || e.key === 'd') movement.right = true;
+            if (e.key === 'ArrowUp') movement.up = true;
+            if (e.key === 'ArrowDown') movement.down = true;
+            if (e.key === 'ArrowLeft') movement.left = true;
+            if (e.key === 'ArrowRight') movement.right = true;
         });
-
         document.addEventListener('keyup', (e) => {
-            if (e.key === 'ArrowUp' || e.key === 'w') movement.up = false;
-            if (e.key === 'ArrowDown' || e.key === 's') movement.down = false;
-            if (e.key === 'ArrowLeft' || e.key === 'a') movement.left = false;
-            if (e.key === 'ArrowRight' || e.key === 'd') movement.right = false;
+            if (e.key === 'ArrowUp') movement.up = false;
+            if (e.key === 'ArrowDown') movement.down = false;
+            if (e.key === 'ArrowLeft') movement.left = false;
+            if (e.key === 'ArrowRight') movement.right = false;
         });
 
-        // --- 📱 ควบคุมด้วยปุ่มกด (แก้ใหม่ใช้ Pointer Events) ---
-        const buttons = document.querySelectorAll('#controls button');
-        
-        buttons.forEach(btn => {
+        document.querySelectorAll('#controls button').forEach(btn => {
             const dir = btn.getAttribute('data-dir');
-
-            // ใช้ pointerdown แทน mousedown/touchstart (ครอบคลุมหมด)
-            btn.addEventListener('pointerdown', (e) => {
-                e.preventDefault(); // ห้าม Browser เข้ามายุ่ง
-                movement[dir] = true;
-                btn.classList.add('active');
-            });
-
-            // ฟังก์ชันสำหรับ "ปล่อยมือ"
-            const stopMove = (e) => {
-                e.preventDefault();
-                movement[dir] = false;
-                btn.classList.remove('active');
-            };
-
-            // ดักจับทุกกรณีที่ "ปล่อยมือ"
-            btn.addEventListener('pointerup', stopMove);       // ปล่อยเมาส์/นิ้ว
-            btn.addEventListener('pointerleave', stopMove);    // ลากนิ้วออกนอกปุ่ม
-            btn.addEventListener('pointercancel', stopMove);   // ระบบขัดข้อง/นิ้วหลุด
+            const start = (e) => { e.preventDefault(); movement[dir] = true; btn.classList.add('active'); };
+            const stop = (e) => { e.preventDefault(); movement[dir] = false; btn.classList.remove('active'); };
+            
+            btn.addEventListener('pointerdown', start);
+            btn.addEventListener('pointerup', stop);
+            btn.addEventListener('pointerleave', stop);
         });
-
     </script>
-</body>
-</html>
