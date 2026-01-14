@@ -42,7 +42,12 @@
 
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <script>
+        // --- 1. โหลดรูปตัวละคร (จากเว็บ Flaticon) ---
+        const charImage = new Image();
+        charImage.src = 'https://cdn-icons-png.flaticon.com/128/3408/3408545.png'; // รูปคน Pixel Art
+
         let players = {}; 
         let myId = null;
         let movement = { up: false, down: false, left: false, right: false };
@@ -55,18 +60,34 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             if (Object.keys(players).length === 0) return;
-
             statusDiv.style.display = 'none'; 
 
             for (let id in players) {
                 let p = players[id];
-                ctx.fillStyle = p.color || 'red';
-                ctx.fillRect(p.x, p.y, 30, 30);
                 
+                // --- A. วาดเงาสีๆ (เพื่อให้รู้ว่าใครสีอะไร) ---
+                ctx.fillStyle = p.color || 'rgba(0,0,0,0.2)';
+                ctx.beginPath();
+                // วาดวงรีไว้ใต้เท้า
+                ctx.ellipse(p.x + 25, p.y + 45, 15, 5, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // --- B. วาดรูปตัวคน (แทนสี่เหลี่ยม) ---
+                // ถ้าโหลดรูปเสร็จแล้วให้วาดรูป ถ้ายังไม่เสร็จให้วาดสี่เหลี่ยมไปก่อน
+                if (charImage.complete) {
+                    // drawImage(รูป, x, y, กว้าง, สูง)
+                    ctx.drawImage(charImage, p.x, p.y, 50, 50); 
+                } else {
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(p.x, p.y, 50, 50);
+                }
+                
+                // --- C. วาดชื่อ ---
                 ctx.fillStyle = "black"; 
-                ctx.font = "12px Arial"; 
+                ctx.font = "bold 14px Arial"; 
                 ctx.textAlign = "center";
-                ctx.fillText(id === myId ? "ME" : "Guest", p.x + 15, p.y - 5);
+                // วาดชื่อบนหัว (สูงขึ้นไปอีกนิด)
+                ctx.fillText(id === myId ? "ME" : "Guest", p.x + 25, p.y - 10);
             }
         }
 
@@ -75,7 +96,6 @@
         resize();
 
         try {
-            // เรียกใช้ io() ได้แล้ว เพราะเราโหลดมาจาก CDN
             const socket = io(); 
             statusDiv.innerText = "กำลังเชื่อมต่อ Server...";
 
