@@ -1,19 +1,66 @@
-<script>
-        const socket = io();
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My World</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; background: #222; overflow: hidden; font-family: sans-serif; }
+        canvas { display: block; background: #fff; }
+        
+        #status {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: black; font-size: 24px; font-weight: bold; pointer-events: none;
+            background: rgba(255, 255, 255, 0.8); padding: 10px 20px; border-radius: 10px;
+        }
 
-        // ✅ แก้ไข: ประกาศตัวแปร players ไว้บนสุด ก่อนที่จะถูกเรียกใช้
-        let players = {};
+        #controls {
+            position: fixed; bottom: 20px; right: 20px;
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+            z-index: 99; user-select: none; -webkit-user-select: none;
+        }
+        .row { display: flex; gap: 10px; }
+        button {
+            width: 70px; height: 70px; font-size: 30px;
+            background: rgba(0,0,0,0.2); border: 2px solid #555; border-radius: 50%;
+            color: white; cursor: pointer; touch-action: none;
+        }
+        button:active { background: rgba(0,0,0,0.5); transform: scale(0.9); }
+    </style>
+</head>
+<body>
+    <div id="status">กำลังโหลด...</div>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="controls" oncontextmenu="return false;">
+        <button id="up" data-dir="up">⬆️</button>
+        <div class="row">
+            <button id="left" data-dir="left">⬅️</button>
+            <button id="down" data-dir="down">⬇️</button>
+            <button id="right" data-dir="right">➡️</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    
+    <script>
+        let players = {}; 
         let myId = null;
         let movement = { up: false, down: false, left: false, right: false };
 
-        // ฟังก์ชันวาดรูป
+        const statusDiv = document.getElementById('status');
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (Object.keys(players).length === 0) return;
+
+            statusDiv.style.display = 'none'; 
+
             for (let id in players) {
                 let p = players[id];
-                ctx.fillStyle = p.color;
+                ctx.fillStyle = p.color || 'red';
                 ctx.fillRect(p.x, p.y, 30, 30);
                 
                 ctx.fillStyle = "black"; 
@@ -23,60 +70,68 @@
             }
         }
 
-        // ฟังก์ชันปรับขนาดจอ
-        const resize = () => { 
-            canvas.width = window.innerWidth; 
-            canvas.height = window.innerHeight; 
-            draw(); 
-        };
+        const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; draw(); };
         window.addEventListener('resize', resize);
-        resize(); // เรียกใช้ตอนนี้ปลอดภัยแล้ว เพราะ players ถูกสร้างบรรทัดบนสุดแล้ว
+        resize();
 
-        // --- ส่วนรับข้อมูลจาก Server ---
-        socket.on('connect', () => myId = socket.id);
-        socket.on('currentPlayers', (data) => { players = data; draw(); });
-        socket.on('newPlayer', (data) => { players[data.id] = data.player; draw(); });
-        socket.on('playerMoved', (data) => {
-            if(players[data.id]) { players[data.id].x = data.x; players[data.id].y = data.y; draw(); }
-        });
-        socket.on('disconnectPlayer', (id) => { delete players[id]; draw(); });
+        try {
+            // เรียกใช้ io() ได้แล้ว เพราะเราโหลดมาจาก CDN
+            const socket = io(); 
+            statusDiv.innerText = "กำลังเชื่อมต่อ Server...";
 
-        // --- Game Loop (เดิน) ---
-        setInterval(() => {
-            if (!myId || !players[myId]) return;
-            let moved = false;
-            if (movement.up) { players[myId].y -= 5; moved = true; }
-            if (movement.down) { players[myId].y += 5; moved = true; }
-            if (movement.left) { players[myId].x -= 5; moved = true; }
-            if (movement.right) { players[myId].x += 5; moved = true; }
-            
-            if (moved) { 
-                socket.emit('playerMovement', { x: players[myId].x, y: players[myId].y }); 
-                draw(); 
-            }
-        }, 1000 / 60);
+            socket.on('connect', () => {
+                myId = socket.id;
+                statusDiv.innerText = "เชื่อมต่อสำเร็จ!";
+            });
 
-        // --- Controls ---
+            socket.on('currentPlayers', (data) => { players = data; draw(); });
+            socket.on('newPlayer', (data) => { players[data.id] = data.player; draw(); });
+            socket.on('playerMoved', (data) => {
+                if(players[data.id]) { players[data.id].x = data.x; players[data.id].y = data.y; draw(); }
+            });
+            socket.on('disconnectPlayer', (id) => { delete players[id]; draw(); });
+
+            setInterval(() => {
+                if (!myId || !players[myId]) return;
+                let moved = false;
+                if (movement.up) { players[myId].y -= 5; moved = true; }
+                if (movement.down) { players[myId].y += 5; moved = true; }
+                if (movement.left) { players[myId].x -= 5; moved = true; }
+                if (movement.right) { players[myId].x += 5; moved = true; }
+                
+                if (moved) { 
+                    socket.emit('playerMovement', { x: players[myId].x, y: players[myId].y }); 
+                    draw(); 
+                }
+            }, 1000 / 60);
+
+        } catch (e) {
+            statusDiv.innerText = "Error: " + e.message;
+            statusDiv.style.color = "red";
+        }
+
+        const handleMove = (dir, isPressed) => { movement[dir] = isPressed; };
+        
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowUp') movement.up = true;
-            if (e.key === 'ArrowDown') movement.down = true;
-            if (e.key === 'ArrowLeft') movement.left = true;
-            if (e.key === 'ArrowRight') movement.right = true;
+            if (e.key === 'ArrowUp') handleMove('up', true);
+            if (e.key === 'ArrowDown') handleMove('down', true);
+            if (e.key === 'ArrowLeft') handleMove('left', true);
+            if (e.key === 'ArrowRight') handleMove('right', true);
         });
         document.addEventListener('keyup', (e) => {
-            if (e.key === 'ArrowUp') movement.up = false;
-            if (e.key === 'ArrowDown') movement.down = false;
-            if (e.key === 'ArrowLeft') movement.left = false;
-            if (e.key === 'ArrowRight') movement.right = false;
+            if (e.key === 'ArrowUp') handleMove('up', false);
+            if (e.key === 'ArrowDown') handleMove('down', false);
+            if (e.key === 'ArrowLeft') handleMove('left', false);
+            if (e.key === 'ArrowRight') handleMove('right', false);
         });
 
         document.querySelectorAll('#controls button').forEach(btn => {
             const dir = btn.getAttribute('data-dir');
-            const start = (e) => { e.preventDefault(); movement[dir] = true; btn.classList.add('active'); };
-            const stop = (e) => { e.preventDefault(); movement[dir] = false; btn.classList.remove('active'); };
-            
-            btn.addEventListener('pointerdown', start);
+            btn.addEventListener('pointerdown', (e) => { e.preventDefault(); handleMove(dir, true); btn.style.background = 'rgba(0,0,0,0.5)'; });
+            const stop = (e) => { e.preventDefault(); handleMove(dir, false); btn.style.background = 'rgba(0,0,0,0.2)'; };
             btn.addEventListener('pointerup', stop);
             btn.addEventListener('pointerleave', stop);
         });
     </script>
+</body>
+</html>
